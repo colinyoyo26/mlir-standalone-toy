@@ -341,4 +341,18 @@ def TransposeOp : Toy_Op<"transpose",
   let verifier = [{ return ::verify(*this); }];
 }
 
+def MatmulOp : Toy_Op<"matmul", 
+    [DeclareOpInterfaceMethods<ShapeInferenceOpInterface>]> {
+  let summary = "matmul operation";
+  
+  let arguments = (ins F64Tensor:$lhs, F64Tensor:$rhs);
+  let results = (outs F64Tensor);
+  
+  let builders = [
+    OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs)> 
+  ];
+
+  let verifier = [{ return ::verify(*this); }];
+}
+
 #endif // TOY_OPS
