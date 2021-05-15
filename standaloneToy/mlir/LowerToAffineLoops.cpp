@@ -243,57 +243,6 @@ struct TransposeOpLowering : public ConversionPattern {
     return success();
   }
 };
-
-//===----------------------------------------------------------------------===//
-// ToyToAffine RewritePatterns: Matmul operations
-//===----------------------------------------------------------------------===//
-
-struct MatmulOpLowering : public ConversionPattern {
-  MatmulOpLowering(MLIRContext *ctx)
-      : ConversionPattern(toy::MatmulOp::getOperationName(), 1, ctx) {}
-
-  LogicalResult
-  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const final {
-    auto resultTensorType = (*op->result_type_begin()).cast<TensorType>();
-    auto lhsTensorType = (*op->operand_type_begin()).cast<TensorType>();
-    auto rhsTensorType = (*(op->operand_type_begin() + 1)).cast<TensorType>();
-    auto loc = op->getLoc();
-
-    auto resultMemRefType = convertTensorToMemRef(resultTensorType);
-    auto resultAlloc = insertAllocAndDealloc(resultMemRefType, loc, rewriter);
-
-    const int numNests = 3;
-    auto lhsShape = lhsTensorType.getShape();
-    auto rhsShape = rhsTensorType.getShape();
-    SmallVector<int64_t, 4> lowerBounds(numNests, 0);
-    SmallVector<int64_t, 4> upperBounds{lhsShape[0], rhsShape[1], rhsShape[0]};
-    SmallVector<int64_t, 4> steps(numNests, 1);
-
-    buildAffineLoopNest(
-        rewriter, loc, lowerBounds, upperBounds, steps,
-        [&](OpBuilder &nestedBuilder, Location loc, ValueRange ivs) {
-          toy::MatmulOp::Adaptor matmulAdaptor(operands);
-
-          auto loadedLhs = nestedBuilder.create<AffineLoadOp>(
-              loc, matmulAdaptor.lhs(), ValueRange{ivs[0], ivs[2]});
-          auto loadedRhs = nestedBuilder.create<AffineLoadOp>(
-              loc, matmulAdaptor.rhs(), ValueRange{ivs[2], ivs[1]});
-
-          ValueRange resultIvs{ivs[0], ivs[1]};
-          auto loadedResult =
-              nestedBuilder.create<AffineLoadOp>(loc, resultAlloc, resultIvs);
-          auto valueToAdd =
-              nestedBuilder.create<MulFOp>(loc, loadedLhs, loadedRhs);
-          auto valueToStore =
-              nestedBuilder.create<AddFOp>(loc, loadedResult, valueToAdd);
-          nestedBuilder.create<AffineStoreOp>(loc, valueToStore, resultAlloc,
-                                              resultIvs);
-        });
-    rewriter.replaceOp(op, resultAlloc);
-    return success();
-  }
-};
 } // end anonymous namespace.
 
 //===----------------------------------------------------------------------===//
@@ -347,8 +296,7 @@ void ToyToAffineLoweringPass::runOnFunction() {
   // the set of patterns that will lower the Toy operations.
   OwningRewritePatternList patterns;
   patterns.insert<AddOpLowering, ConstantOpLowering, MulOpLowering,
-                  ReturnOpLowering, TransposeOpLowering, MatmulOpLowering>(
-      &getContext());
+                  ReturnOpLowering, TransposeOpLowering>(&getContext());
 
   // With the target and rewrite patterns defined, we can now attempt the
   // conversion. The conversion will signal failure if any of our `illegal`

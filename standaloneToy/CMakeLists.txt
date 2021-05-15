@@ -48,6 +48,7 @@ add_llvm_executable(toyc
   parser/AST.cpp
   mlir/MLIRGen.cpp
   mlir/Dialect.cpp
+  mlir/LowerToLinalg.cpp
   mlir/LowerToAffineLoops.cpp
   mlir/LowerToLLVM.cpp
   mlir/ShapeInferencePass.cpp
@@ -78,3 +79,4 @@ target_link_libraries(toyc
     MLIRTargetLLVMIR
     MLIRTransforms
     )
+

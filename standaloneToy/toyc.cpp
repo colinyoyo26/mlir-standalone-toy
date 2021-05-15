@@ -15,6 +15,7 @@
 #include "toy/Parser.h"
 #include "toy/Passes.h"
 
+#include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/AsmState.h"
@@ -60,6 +61,7 @@ enum Action {
   None,
   DumpAST,
   DumpMLIR,
+  DumpMLIRLinalg,
   DumpMLIRAffine,
   DumpMLIRLLVM,
   DumpLLVMIR,
@@ -70,6 +72,8 @@ static cl::opt<enum Action> emitAction(
     "emit", cl::desc("Select the kind of output desired"),
     cl::values(clEnumValN(DumpAST, "ast", "output the AST dump")),
     cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")),
+    cl::values(clEnumValN(DumpMLIRLinalg, "mlir-linalg",
+                          "output the MLIR dump after linalg lowering")),
     cl::values(clEnumValN(DumpMLIRAffine, "mlir-affine",
                           "output the MLIR dump after affine lowering")),
     cl::values(clEnumValN(DumpMLIRLLVM, "mlir-llvm",
@@ -135,6 +139,7 @@ int loadAndProcessMLIR(mlir::MLIRContext &context,
   applyPassManagerCLOptions(pm);
 
   // Check to see what granularity of MLIR we are compiling to.
+  bool isLoweringToLinalg = emitAction >= Action::DumpMLIRLinalg;
   bool isLoweringToAffine = emitAction >= Action::DumpMLIRAffine;
   bool isLoweringToLLVM = emitAction >= Action::DumpMLIRLLVM;
 
@@ -151,11 +156,21 @@ int loadAndProcessMLIR(mlir::MLIRContext &context,
     optPM.addPass(mlir::createCSEPass());
   }
 
+  if (isLoweringToLinalg) {
+    mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
+
+    // Partially lower the toy dialecy to linalg dialect.
+    optPM.addPass(mlir::toy::createLowerToLinalgPass());
+    optPM.addPass(mlir::createCanonicalizerPass());
+    optPM.addPass(mlir::createCSEPass());
+  }
+
   if (isLoweringToAffine) {
     mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
 
     // Partially lower the toy dialect with a few cleanups afterwards.
     optPM.addPass(mlir::toy::createLowerToAffinePass());
+    optPM.addPass(mlir::createConvertLinalgToAffineLoopsPass());
     optPM.addPass(mlir::createCanonicalizerPass());
     optPM.addPass(mlir::createCSEPass());
 
